@@ -135,6 +135,26 @@ def run_agent(
 
             # t ODO (Ex2): policy layer goes here
             output = execute_tool(tools_map, call.name, args)
+            # Policy layer: the harness decides, the tool just works
+            if call.name in requires_approval:
+                if approver is None:
+                    # fail closed: a risky tool without an approver never runs
+                    output = (f"DENIED BY OPERATOR: no approver configured for '{call.name}'. "
+                              "Adjust your plan.")
+                else:
+                    decision = approver(call.name, args)
+                    if not decision.approved:
+                        output = f"DENIED BY OPERATOR: {decision.feedback}. Adjust your plan."
+                    else:
+                        run_args = decision.args if decision.args is not None else args
+                        output = execute_tool(tools_map, call.name, run_args)
+                        changed = {k: v for k, v in run_args.items() if args.get(k) != v}
+                        if changed:
+                            output += (f" NOTE: the operator EDITED your arguments; "
+                                       f"executed with {json.dumps(changed)[:200]}")
+            else:
+                output = execute_tool(tools_map, call.name, args)
+
             if seen[key] == 2:
                 output = ("NOTE: Repeated call with identical arguments. "
                           "Use the earlier result instead of calling again.\n" + output)
